@@ -15,7 +15,7 @@ from keras.regularizers import l2
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, f1_score
 
-def load_data():
+def load_data(vocab_size, max_length):
 	#so it doesn't use ellipse when printing
 	np.set_printoptions(threshold=np.inf)
 
@@ -24,9 +24,9 @@ def load_data():
 	txt = Data["txt"]
 	labels = np.array(Data["label"])
 
-	vocab_size = 10000
+
 	encoded_docs = [one_hot(t, vocab_size) for t in txt]
-	max_length = 600
+
 	padded_docs = pad_sequences(encoded_docs, maxlen=max_length, padding='post')
 	print("X:", padded_docs.shape)
 	print("Labels:", labels.shape)
@@ -39,7 +39,7 @@ def load_data():
 	X, labels = zip(*randArray)
 	X = np.array(X)
 	labels = np.array(labels)
-	x_train, x_test, y_train, y_test = train_test_split(X, labels, test_size=0.33, shuffle= False)
+	x_train, x_test, y_train, y_test = train_test_split(X, labels, test_size=0.2, shuffle= False)
 
 
 	return x_train, x_test, y_train, y_test
@@ -85,19 +85,24 @@ def load_Glove():
 #	.9,.95,1 without weight regularization --> 93-96%
 #	1 with weight regularization --> max of 94.75%
 
-def model(embedding_matrix, x_train, x_test, y_train, y_test):
+def model(pre_trained, vocab_size, max_length, x_train, x_test, y_train, y_test):
 
-	epsilonVals = [.9,.95,1]
+	epsilonVals = [.95]
 
 	for epsilonVal in epsilonVals:
 
 		print("Epsilon:", epsilonVal)
 
-		logdir="logs/scalars/bi/42b/114/" +str(epsilonVal)
+		logdir="logs/scalars/bi/42b/119/" +str(epsilonVal)
 		tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
 		#Define the RNN model
 		rnn = Sequential()
-		e = Embedding(vocab_size, 300, weights=[embedding_matrix], input_length=max_length, trainable=False)
+		if pre_trained == True:
+			embedding_matrix = load_Glove()
+			e = Embedding(vocab_size, 300, weights=[embedding_matrix], input_length=max_length, trainable=False)
+		else:
+			e = Embedding(vocab_size, 300, input_length=max_length)
+
 		rnn.add(e)
 		rnn.add(Bidirectional(CuDNNGRU(256, return_sequences=True)))
 		rnn.add(Bidirectional(CuDNNGRU(128, return_sequences=True)))
@@ -112,7 +117,7 @@ def model(embedding_matrix, x_train, x_test, y_train, y_test):
 		optimizer = Adam(lr = .001, decay = .00005)
 		rnn.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
 		print(rnn.summary())
-		history = rnn.fit(x_train, y_train, epochs = 20, validation_split=.1, callbacks=[tensorboard_callback])
+		history = rnn.fit(x_train, y_train, epochs = 20, validation_split=.01, callbacks=[tensorboard_callback])
 
 		##Evaluation of the model##
 		test = rnn.evaluate(x_test, y_test)
@@ -134,9 +139,14 @@ def model(embedding_matrix, x_train, x_test, y_train, y_test):
 
 
 def run():
-	x_train, x_test, y_train, y_test = load_data()
-	embedding_matrix = load_Glove()
-	rnn = model(embedding_matrix, x_train, x_test, y_train, y_test)
+	vocab_size = 14270 #size of embedding
+	max_length = 600
+	pre_trained = True
+
+
+	x_train, x_test, y_train, y_test = load_data(vocab_size, max_length)
+
+	rnn = model(pre_trained, vocab_size, max_length, x_train, x_test, y_train, y_test)
 
 
 
